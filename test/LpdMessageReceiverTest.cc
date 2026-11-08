@@ -1,6 +1,7 @@
 #include "LpdMessageReceiver.h"
 
 #include <cstring>
+#include <iostream>
 
 #include <cppunit/extensions/HelperMacros.h>
 
@@ -30,6 +31,10 @@ CPPUNIT_TEST_SUITE_REGISTRATION(LpdMessageReceiverTest);
 
 void LpdMessageReceiverTest::testReceiveMessage()
 {
+  if (multicastBlocked(LPD_MULTICAST_ADDR, LPD_MULTICAST_PORT)) {
+    std::cerr << "Skipped: multicast is blocked by the OS" << std::endl;
+    return;
+  }
   LpdMessageReceiver rcv(LPD_MULTICAST_ADDR, LPD_MULTICAST_PORT);
   CPPUNIT_ASSERT(rcv.init(""));
 

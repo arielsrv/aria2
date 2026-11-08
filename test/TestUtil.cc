@@ -23,6 +23,13 @@
 #include "DownloadResult.h"
 #include "message_digest_helper.h"
 
+#ifdef __APPLE__
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#  include <unistd.h>
+#endif // __APPLE__
+
 namespace aria2 {
 
 void createFile(const std::string& path, size_t length)
@@ -147,6 +154,28 @@ std::shared_ptr<DownloadResult> createDownloadResult(error_code::Value result,
   dr->inMemoryDownload = false;
   dr->option = std::shared_ptr<Option>(new Option());
   return dr;
+}
+
+bool multicastBlocked(const std::string& addr, uint16_t port)
+{
+#ifdef __APPLE__
+  int fd = socket(AF_INET, SOCK_DGRAM, 0);
+  if (fd == -1) {
+    return false;
+  }
+  sockaddr_in sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sin_family = AF_INET;
+  sa.sin_port = htons(port);
+  inet_pton(AF_INET, addr.c_str(), &sa.sin_addr);
+  bool blocked = sendto(fd, "", 0, 0, reinterpret_cast<sockaddr*>(&sa),
+                        sizeof(sa)) == -1 &&
+                 errno == EHOSTUNREACH;
+  close(fd);
+  return blocked;
+#else  // !__APPLE__
+  return false;
+#endif // !__APPLE__
 }
 
 } // namespace aria2

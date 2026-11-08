@@ -1,6 +1,7 @@
 #include "LpdMessageDispatcher.h"
 
 #include <cstring>
+#include <iostream>
 #include <sstream>
 
 #include <cppunit/extensions/HelperMacros.h>
@@ -43,6 +44,10 @@ void LpdMessageDispatcherTest::testCreateLpdRequest()
 
 void LpdMessageDispatcherTest::testSendMessage()
 {
+  if (multicastBlocked(LPD_MULTICAST_ADDR, LPD_MULTICAST_PORT)) {
+    std::cerr << "Skipped: multicast is blocked by the OS" << std::endl;
+    return;
+  }
   std::shared_ptr<SocketCore> recvsock(new SocketCore(SOCK_DGRAM));
 #ifdef __MINGW32__
   recvsock->bindWithFamily(LPD_MULTICAST_PORT, AF_INET);
