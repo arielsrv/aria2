@@ -1,0 +1,155 @@
+name: release
+
+# Builds the macOS and Windows release binaries with up to date
+# dependencies.  Pushing a tag named release-<version>-r<N> (e.g.
+# release-1.37.0-r1) publishes them as a GitHub release; pull requests
+# and manual runs only upload the binaries as workflow artifacts.
+
+on:
+  push:
+    tags:
+    - 'release-*'
+  pull_request:
+    paths:
+    - .github/workflows/release.yml
+    - makerelease-osx.mk
+    - Dockerfile.mingw
+    - mingw-config
+    - mingw-release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
+    steps:
+    - uses: actions/checkout@v7
+    - id: version
+      run: |
+        version=$(grep AC_INIT configure.ac | cut -d'[' -f3 | cut -d']' -f1)
+        case "$GITHUB_REF" in
+        refs/tags/release-*-r*) build="${GITHUB_REF##*-r}" ;;
+        *) build=dev ;;
+        esac
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    strategy:
+      matrix:
+        include:
+        - os: macos-15
+          arch: arm64
+        - os: macos-15-intel
+          arch: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        # makerelease-osx.mk generates the ChangeLog from the tags.
+        fetch-depth: 0
+    - uses: actions/setup-python@v7
+      with:
+        python-version: '3.x'
+    - name: Setup
+      run: |
+        brew install autoconf automake libtool pkg-config gnu-tar
+        pip install sphinx docutils
+    - name: Libtool
+      run: |
+        autoreconf -i
+    - name: Build
+      run: |
+        mkdir build-release
+        cd build-release
+        ln -s ../makerelease-osx.mk Makefile
+        make NON_RELEASE=force \
+          BUILD_ARCH=${{ matrix.arch }} \
+          BUILD=-${{ matrix.arch }}-build${{ needs.version.outputs.build }}
+    - uses: actions/upload-artifact@v7
+      with:
+        name: aria2-macos-${{ matrix.arch }}
+        path: |
+          build-release/aria2-*-osx-darwin-*.tar.bz2
+          build-release/aria2-*-osx-darwin-*.pkg
+          build-release/aria2-*-osx-darwin-*.dmg
+        if-no-files-found: error
+
+  windows:
+    needs: version
+    strategy:
+      matrix:
+        include:
+        - host: i686-w64-mingw32
+          label: win-32bit
+        - host: x86_64-w64-mingw32
+          label: win-64bit
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v7
+    - name: Source ref
+      id: source
+      env:
+        PR_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        PR_BRANCH: ${{ github.head_ref }}
+      run: |
+        # Dockerfile.mingw clones the sources itself, so point it at
+        # the ref being built.
+        if [ -n "$PR_BRANCH" ]; then
+          echo "repo=$PR_REPO" >> "$GITHUB_OUTPUT"
+          echo "name=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "ref=refs/heads/$PR_BRANCH" >> "$GITHUB_OUTPUT"
+        else
+          echo "repo=$GITHUB_REPOSITORY" >> "$GITHUB_OUTPUT"
+          echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Build
+      run: |
+        docker build -t aria2-mingw \
+          --build-arg HOST=${{ matrix.host }} \
+          --build-arg ARIA2_REPO=${{ steps.source.outputs.repo }} \
+          --build-arg ARIA2_VERSION=${{ steps.source.outputs.name }} \
+          --build-arg ARIA2_REF=${{ steps.source.outputs.ref }} \
+          - < Dockerfile.mingw
+        mkdir mingw-out
+        docker run --rm -v "$PWD/mingw-out:/out" aria2-mingw \
+          cp /aria2/src/aria2c.exe /out
+    - name: Package
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-docutils zip
+        rst2html README.rst > README.html
+        HOST=${{ matrix.host }} LABEL=${{ matrix.label }} \
+          BUILD_VER=${{ needs.version.outputs.build }} ./mingw-release
+    - uses: actions/upload-artifact@v7
+      with:
+        name: aria2-${{ matrix.label }}
+        path: aria2-*-${{ matrix.label }}-build*.zip
+        if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/release-')
+    needs: [version, macos, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        path: dist
+        merge-multiple: true
+    - name: Publish
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release create "$GITHUB_REF_NAME" dist/* \
+          --repo "$GITHUB_REPOSITORY" \
+          --title "aria2 ${{ needs.version.outputs.version }}-r${{ needs.version.outputs.build }}" \
+          --generate-notes
