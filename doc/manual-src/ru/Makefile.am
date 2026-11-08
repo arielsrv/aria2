@@ -126,7 +126,9 @@ text:
 
 man:
 	$(SPHINXBUILD) -b man $(ALLSPHINXOPTS) $(BUILDDIR)/man
-	sed -i -e '1i .\\" -*- mode: troff; coding: utf-8 -*-' $(BUILDDIR)/man/aria2c.1
+	{ echo '.\" -*- mode: troff; coding: utf-8 -*-'; \
+	  cat $(BUILDDIR)/man/aria2c.1; } > $(BUILDDIR)/man/aria2c.1.tmp
+	mv $(BUILDDIR)/man/aria2c.1.tmp $(BUILDDIR)/man/aria2c.1
 	@echo
 	@echo "Build finished. The manual pages are in $(BUILDDIR)/man."
 

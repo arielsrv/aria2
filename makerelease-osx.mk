@@ -435,7 +435,6 @@ $(ARIA2_DIST).dmg: $(ARIA2_DIST).pkg
 		-volname "aria2 $(VERSION) $(BUILD_ARCH)" \
 		-ov
 	hdiutil convert -format UDBZ -o $@ $@.uncompressed.dmg
-	hdiutil flatten $@
 	rm -rf $@.uncompressed.dmg dmg
 
 dist.build: $(ARIA2_DIST).tar.bz2 $(ARIA2_DIST).pkg $(ARIA2_DIST).dmg
