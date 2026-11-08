@@ -73,7 +73,8 @@ RUN tar xf sqlite-autoconf-3540100.tar.gz && \
         --enable-static \
         --prefix=/usr/local/$HOST \
         --host=$HOST \
-        --build=`dpkg-architecture -qDEB_BUILD_GNU_TYPE` && \
+        --build=`dpkg-architecture -qDEB_BUILD_GNU_TYPE` \
+        CFLAGS="-O2 -D_WIN32_WINNT=0x0601" && \
     make -j$(nproc) install
 
 RUN tar xf zlib-1.4.tar.gz && \

@@ -72,6 +72,10 @@ jobs:
         make NON_RELEASE=force \
           BUILD_ARCH=${{ matrix.arch }} \
           BUILD=-${{ matrix.arch }}-build${{ needs.version.outputs.build }}
+    - name: Test log
+      if: failure()
+      run: |
+        cat build-release/aria2.*/test/test-suite.log || true
     - uses: actions/upload-artifact@v7
       with:
         name: aria2-macos-${{ matrix.arch }}
