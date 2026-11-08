@@ -65,6 +65,11 @@ createRequestGroup(int32_t pieceLength, int64_t totalLength,
 std::shared_ptr<DownloadResult> createDownloadResult(error_code::Value result,
                                                      const std::string& uri);
 
+// Returns true if sending to the multicast group addr:port is denied
+// by the OS, which macOS 15 and later do for processes without the
+// Local Network permission (e.g., in headless CI).
+bool multicastBlocked(const std::string& addr, uint16_t port);
+
 namespace {
 template <typename V, typename T> bool derefFind(const V& v, const T& t)
 {
