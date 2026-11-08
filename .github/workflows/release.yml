@@ -8,7 +8,7 @@ name: release
 on:
   push:
     tags:
-    - 'release-*'
+    - 'release-*-r*'
   pull_request:
     paths:
     - .github/workflows/release.yml
@@ -33,7 +33,15 @@ jobs:
       run: |
         version=$(grep AC_INIT configure.ac | cut -d'[' -f3 | cut -d']' -f1)
         case "$GITHUB_REF" in
-        refs/tags/release-*-r*) build="${GITHUB_REF##*-r}" ;;
+        refs/tags/release-*-r*)
+          tag="${GITHUB_REF_NAME#release-}"
+          build="${tag##*-r}"
+          if [ "${tag%-r*}" != "$version" ] || \
+             ! printf '%s' "$build" | grep -qE '^[0-9]+$'; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match release-$version-r<N>"
+            exit 1
+          fi
+          ;;
         *) build=dev ;;
         esac
         echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -115,12 +123,16 @@ jobs:
           echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
         fi
     - name: Build
+      env:
+        SOURCE_REPO: ${{ steps.source.outputs.repo }}
+        SOURCE_NAME: ${{ steps.source.outputs.name }}
+        SOURCE_REF: ${{ steps.source.outputs.ref }}
       run: |
         docker build -t aria2-mingw \
           --build-arg HOST=${{ matrix.host }} \
-          --build-arg ARIA2_REPO=${{ steps.source.outputs.repo }} \
-          --build-arg ARIA2_VERSION=${{ steps.source.outputs.name }} \
-          --build-arg ARIA2_REF=${{ steps.source.outputs.ref }} \
+          --build-arg ARIA2_REPO="$SOURCE_REPO" \
+          --build-arg ARIA2_VERSION="$SOURCE_NAME" \
+          --build-arg ARIA2_REF="$SOURCE_REF" \
           - < Dockerfile.mingw
         mkdir mingw-out
         docker run --rm -v "$PWD/mingw-out:/out" aria2-mingw \
@@ -152,8 +164,10 @@ jobs:
     - name: Publish
       env:
         GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ needs.version.outputs.version }}
+        BUILD: ${{ needs.version.outputs.build }}
       run: |
         gh release create "$GITHUB_REF_NAME" dist/* \
           --repo "$GITHUB_REPOSITORY" \
-          --title "aria2 ${{ needs.version.outputs.version }}-r${{ needs.version.outputs.build }}" \
+          --title "aria2 $VERSION-r$BUILD" \
           --generate-notes
